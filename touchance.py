@@ -88,9 +88,9 @@ class Touchance(object):
 
         return True
 
-    def keep_alive(self):
+    def keep_alive(self, threads=True):
         if self.is_connected is True:
-            self.__subscriber = Subscriber(self.__create_sub_socket())
+            self.__subscriber = Subscriber(self.__create_sub_socket(), threads)
             self.__subscriber.start()
 
     def pong(self, _id: str):
@@ -163,9 +163,10 @@ class Touchance(object):
 class Subscriber(Thread):
     __stop = False
 
-    def __init__(self, socket, *args, **kwargs):
+    def __init__(self, socket, threads: bool, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.__socket = socket
+        self.__threads = threads
 
     def stop(self):
         self.__stop = True
@@ -178,7 +179,7 @@ class Subscriber(Thread):
             if self.__stop is True or 'stop' in message:
                 break
 
-            bus.emit('message', recv)
+            bus.emit('message', recv, threads=self.__threads)
 
 
 class QuoteAPI(Touchance):

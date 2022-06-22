@@ -63,7 +63,7 @@ def test_keep_alive(mock_quote_api, context, socket):
         b'stop\x00'
     ]
 
-    quote_api.keep_alive()
+    quote_api.keep_alive(threads=False)
 
     socket.send_json.assert_called_with({"Request": "PONG", "SessionKey": quote_api.session_key, "ID": 'TC'})
 
