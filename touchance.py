@@ -1,16 +1,18 @@
 from json import loads
-from threading import Lock
+from threading import Lock, Thread
 
-from zmq import Context, REQ
+from zmq import Context, REQ, SUB, SUBSCRIBE
 
 
-class Touchbase(object):
+class Touchance(object):
     host = '127.0.0.1'
+    port = '51237'
     __app_id = 'ZMQ'
     __secret = '8076c9867a372d2a9a814ae710c256e2'
     __context = None
     __locker = None
     __socket = None
+    __keep_alive = None
     connection_info = None
 
     def __init__(self, context: Context = None, locker: Lock = None):
@@ -35,8 +37,7 @@ class Touchbase(object):
         return self
 
     def connect(self):
-        self.__socket = self.__context.socket(REQ)
-        self.__socket.connect('tcp://%s:%s' % (self.host, 51237))
+        self.__socket = self.create_socket(REQ, self.port)
         self.connection_info = self.__send({
             'Request': 'LOGIN',
             'Param': {'SystemName': self.__app_id, 'ServiceKey': self.__secret}
@@ -52,6 +53,27 @@ class Touchbase(object):
         self.connection_info = None
 
         return True
+
+    def keep_alive(self):
+        if self.__keep_alive is not None and self.__keep_alive.is_alive():
+            self.__keep_alive.stop()
+
+        self.__keep_alive = KeepAlive(self)
+        self.__keep_alive.start()
+
+        return self
+
+    def pong(self, _id: str):
+        return self.__send({'Request': 'PONG', 'SessionKey': self.session_key, 'ID': _id})
+
+    def create_socket(self, socket_type: int, port: str):
+        socket = self.__context.socket(socket_type)
+        socket.connect('tcp://%s:%s' % (self.host, port))
+
+        return socket
+
+    def create_sub_socket(self, socket_type: int):
+        return self.create_socket(socket_type, self.sub_port)
 
     def query_instrument_info(self, quote_symbol: str):
         return self.__send({"Request": "QUERYINSTRUMENTINFO", "SessionKey": self.session_key, "Symbol": quote_symbol})
@@ -71,13 +93,13 @@ class Touchbase(object):
 
         return data
 
-    def queryAllFutureInfo(self):
+    def query_all_future_info(self):
         return self.query_all_instrument_info('Fut')
 
-    def queryAllOptionInfo(self):
+    def query_all_option_info(self):
         return self.query_all_instrument_info('Opt')
 
-    def queryAllStockInfo(self):
+    def query_all_stock_info(self):
         return self.query_all_instrument_info('Fut2')
 
     def __lock(self):
@@ -92,11 +114,44 @@ class Touchbase(object):
     def __send(self, params: dict):
         self.__lock()
         self.__socket.send_json(params)
+        message = self.__socket.recv().decode('utf-8').rstrip('\x00')
         self.__unlock()
-        message = self.__socket.recv()
-        data = loads(message[:-1])
-
-        if data['Success'] == 'Fail':
+        data = loads(message)
+        if 'Success' in data and data['Success'] == 'Fail' and 'ErrMsg' in data:
             raise RuntimeError(data['ErrMsg'])
 
         return data
+
+
+class KeepAlive(Thread):
+    __stop = False
+
+    def __init__(self, api: Touchance):
+        super().__init__()
+        self.__api = api
+
+    def stop(self):
+        self.__stop = True
+
+    def run(self):
+        socket = self.__api.create_sub_socket(SUB)
+        socket.setsockopt_string(SUBSCRIBE, '')
+
+        while True:
+            message = socket.recv().decode('utf-8')
+
+            if self.__stop is True or 'stop' in message:
+                break
+
+            if '{"DataType":"PING"}' not in message:
+                continue
+
+            self.__api.pong('TC')
+
+
+class QuoteAPI(Touchance):
+    port = '51237'
+
+
+class TradeAPI(Touchance):
+    port = '51207'
