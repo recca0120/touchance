@@ -188,7 +188,14 @@ class QuoteAPI(Touchance):
 
     def subscribe_quote(self, quote_symbol: str):
         info = self._send({'Request': 'SUBQUOTE', 'SessionKey': self.session_key, 'Param': {
-            "Symbol": quote_symbol, "SubDataType": "REALTIME"
+            'Symbol': quote_symbol, 'SubDataType': 'REALTIME'
+        }})
+
+        return info['Success'] == 'OK'
+
+    def unsubscribe_quote(self, quote_symbol: str):
+        info = self._send({'Request': 'UNSUBQUOTE', 'SessionKey': self.session_key, 'Param': {
+            'Symbol': quote_symbol, 'SubDataType': 'REALTIME'
         }})
 
         return info['Success'] == 'OK'

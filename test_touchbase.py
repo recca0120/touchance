@@ -84,6 +84,22 @@ def test_subscribe(mock_quote_api, socket):
     })
 
 
+def test_unsubscribe(mock_quote_api, socket):
+    quote_api = mock_quote_api
+    quote_api.connect()
+
+    socket.recv.reset_mock()
+    socket.recv.return_value = b'{"Reply": "UNSUBQUOTE", "Success": "OK"}\x00'
+
+    symbol = 'TC.F.TWF.FITX.HOT'
+
+    assert quote_api.unsubscribe_quote(symbol)
+    socket.send_json.assert_called_with({
+        'Request': 'UNSUBQUOTE', 'SessionKey': '777d79aadfaff06597919a9ce30f8b46',
+        'Param': {'SubDataType': 'REALTIME', 'Symbol': 'TC.F.TWF.FITX.HOT'},
+    })
+
+
 @pytest.fixture()
 def quote_api():
     quote_api = QuoteAPI(keep_alive=False)
