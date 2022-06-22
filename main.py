@@ -41,10 +41,15 @@ def OnRealTimeQuote(symbol):
 if __name__ == '__main__':
     quote_api = QuoteAPI()
     quote_api.connect()
+    # print(quote_api.query_instrument_info('TC.F.TWF.FITX.HOT'))
     quote_api.subscribe_quote('TC.F.TWF.FITX.HOT')
     quote_api.subscribe_quote('TC.F.CBOT.YM.202209')
+    quote_api.subscribe_greeks('TC.F.CBOT.YM.202209')
+
+    print(quote_api.sub_port)
 
     quote_api.on('REALTIME', lambda data: print(datetime.datetime.now()))
     quote_api.on('REALTIME', lambda data: OnRealTimeQuote(data['Quote']))
     quote_api.on('PING', lambda data: print(datetime.datetime.now()))
     quote_api.on('PING', lambda data: print(data))
+    quote_api.on('GREEKS', lambda data: print(data))

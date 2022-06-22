@@ -68,7 +68,7 @@ def test_keep_alive(mock_quote_api, context, socket):
     socket.send_json.assert_called_with({"Request": "PONG", "SessionKey": quote_api.session_key, "ID": 'TC'})
 
 
-def test_subscribe(mock_quote_api, socket):
+def test_subscribe_quote(mock_quote_api, socket):
     quote_api = mock_quote_api
     quote_api.connect()
 
@@ -84,7 +84,7 @@ def test_subscribe(mock_quote_api, socket):
     })
 
 
-def test_unsubscribe(mock_quote_api, socket):
+def test_unsubscribe_quote(mock_quote_api, socket):
     quote_api = mock_quote_api
     quote_api.connect()
 
@@ -97,6 +97,38 @@ def test_unsubscribe(mock_quote_api, socket):
     socket.send_json.assert_called_with({
         'Request': 'UNSUBQUOTE', 'SessionKey': '777d79aadfaff06597919a9ce30f8b46',
         'Param': {'SubDataType': 'REALTIME', 'Symbol': 'TC.F.TWF.FITX.HOT'},
+    })
+
+
+def test_subscribe_greeks(mock_quote_api, socket):
+    quote_api = mock_quote_api
+    quote_api.connect()
+
+    socket.recv.reset_mock()
+    socket.recv.return_value = b'{"Reply": "SUBQUOTE", "Success": "OK"}\x00'
+
+    symbol = 'TC.F.TWF.FITX.HOT'
+
+    assert quote_api.subscribe_greeks(symbol)
+    socket.send_json.assert_called_with({
+        'Request': 'SUBQUOTE', 'SessionKey': '777d79aadfaff06597919a9ce30f8b46',
+        'Param': {'SubDataType': 'GREEKS', 'GreeksType': 'REAL', 'Symbol': 'TC.F.TWF.FITX.HOT'},
+    })
+
+
+def test_unsubscribe_greeks(mock_quote_api, socket):
+    quote_api = mock_quote_api
+    quote_api.connect()
+
+    socket.recv.reset_mock()
+    socket.recv.return_value = b'{"Reply": "SUBQUOTE", "Success": "OK"}\x00'
+
+    symbol = 'TC.F.TWF.FITX.HOT'
+
+    assert quote_api.unsubscribe_greeks(symbol)
+    socket.send_json.assert_called_with({
+        'Request': 'UNSUBQUOTE', 'SessionKey': '777d79aadfaff06597919a9ce30f8b46',
+        'Param': {'SubDataType': 'GREEKS', 'GreeksType': 'REAL', 'Symbol': 'TC.F.TWF.FITX.HOT'},
     })
 
 

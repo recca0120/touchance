@@ -110,9 +110,7 @@ class Touchance(object):
             證券：Fut2
         """
 
-        data = self._send({'Request': 'QUERYALLINSTRUMENT', 'SessionKey': self.session_key, 'Type': query_type})
-
-        return data
+        return self._send({'Request': 'QUERYALLINSTRUMENT', 'SessionKey': self.session_key, 'Type': query_type})
 
     def query_all_future_info(self):
         return self.query_all_instrument_info('Fut')
@@ -196,6 +194,20 @@ class QuoteAPI(Touchance):
     def unsubscribe_quote(self, quote_symbol: str):
         info = self._send({'Request': 'UNSUBQUOTE', 'SessionKey': self.session_key, 'Param': {
             'Symbol': quote_symbol, 'SubDataType': 'REALTIME'
+        }})
+
+        return info['Success'] == 'OK'
+
+    def subscribe_greeks(self, quote_symbol: str, greeks_type='REAL'):
+        info = self._send({'Request': 'SUBQUOTE', 'SessionKey': self.session_key, 'Param': {
+            'Symbol': quote_symbol, 'SubDataType': 'GREEKS', 'GreeksType': greeks_type
+        }})
+
+        return info['Success'] == 'OK'
+
+    def unsubscribe_greeks(self, quote_symbol: str, greeks_type='REAL'):
+        info = self._send({'Request': 'UNSUBQUOTE', 'SessionKey': self.session_key, 'Param': {
+            'Symbol': quote_symbol, 'SubDataType': 'GREEKS', 'GreeksType': greeks_type
         }})
 
         return info['Success'] == 'OK'
