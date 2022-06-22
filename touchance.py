@@ -1,6 +1,7 @@
 import re
 from json import loads
 from threading import Lock, Thread
+from typing import Callable
 
 from event_bus import EventBus
 from zmq import Context, REQ, SUB, SUBSCRIBE
@@ -40,8 +41,10 @@ class Touchance(object):
             data_type = data['DataType']
             if data_type == 'PING':
                 self.pong('TC')
-            else:
-                print(data)
+
+            if data_type in self.__listeners:
+                for func in self.__listeners[data_type]:
+                    func(data)
 
     @property
     def session_key(self):
@@ -152,6 +155,12 @@ class Touchance(object):
     def __get_info(self, key: str):
         return self.__connection_info[key] if key in self.__connection_info else None
 
+    def on(self, event_name: str, func: Callable):
+        if event_name not in self.__listeners:
+            self.__listeners[event_name] = []
+
+        self.__listeners[event_name].append(func)
+
 
 class Subscriber(Thread):
     __stop = False
@@ -187,10 +196,3 @@ class QuoteAPI(Touchance):
 
 class TradeAPI(Touchance):
     port = '51207'
-
-
-if __name__ == '__main__':
-    symbol = 'TC.F.TWF.FITX.HOT'
-    quote_api = QuoteAPI()
-    quote_api.connect()
-    quote_api.subscribe_quote(symbol)
