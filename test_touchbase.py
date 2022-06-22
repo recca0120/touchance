@@ -68,16 +68,32 @@ def test_keep_alive(mock_quote_api, context, socket):
     socket.send_json.assert_called_with({"Request": "PONG", "SessionKey": quote_api.session_key, "ID": 'TC'})
 
 
+def test_subscribe(mock_quote_api, socket):
+    quote_api = mock_quote_api
+    quote_api.connect()
+
+    socket.recv.reset_mock()
+    socket.recv.return_value = b'{"Reply": "SUBQUOTE", "Success": "OK"}\x00'
+
+    symbol = 'TC.F.TWF.FITX.HOT'
+
+    assert quote_api.subscribe_quote(symbol)
+    socket.send_json.assert_called_with({
+        'Request': 'SUBQUOTE', 'SessionKey': '777d79aadfaff06597919a9ce30f8b46',
+        'Param': {'SubDataType': 'REALTIME', 'Symbol': 'TC.F.TWF.FITX.HOT'},
+    })
+
+
 @pytest.fixture()
 def quote_api():
-    quote_api = QuoteAPI()
+    quote_api = QuoteAPI(keep_alive=False)
 
     return quote_api
 
 
 @pytest.fixture()
 def mock_quote_api(context, locker):
-    api = QuoteAPI()
+    api = QuoteAPI(keep_alive=False)
     api.set_context(context)
     api.set_locker(locker)
 
