@@ -5,7 +5,7 @@ import pytest
 from zmq import REQ
 
 from src.event_manager import EventManager
-from src.touchance import QuoteAPI
+from src.quant_bridge import QuoteAPI
 
 
 def test_connect(mock_quote_api, context, locker, socket):
@@ -296,7 +296,7 @@ def sub_socket():
     socket = MagicMock()
     socket.connect = MagicMock()
     socket.send_json = MagicMock()
-    socket.recv = MagicMock(side_effect=[b'__pytest_stop__'])
+    socket.recv = MagicMock(side_effect=[b'__pytest_stop__\x00'])
 
     return socket
 

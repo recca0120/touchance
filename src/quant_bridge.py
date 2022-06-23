@@ -1,11 +1,13 @@
 import re
+from abc import ABC
 from json import loads
-from threading import Lock, Thread
+from threading import Lock
 from typing import Callable
 
 from zmq import Context, REQ, SUB, SUBSCRIBE
 
 from src.event_manager import EventManager
+from src.subscriber import Subscriber
 
 
 def decode_message(raw_message: bytes, clean_prefix=False):
@@ -20,29 +22,24 @@ def decode_message(raw_message: bytes, clean_prefix=False):
     return loads(message)
 
 
-class Touchance(object):
+class TCore(ABC):
     host = '127.0.0.1'
     port = '51237'
-    _emitter = None
     __app_id = 'ZMQ'
     __secret = '8076c9867a372d2a9a814ae710c256e2'
-    __context = None
-    __locker = None
     __socket = None
+    __subscriber = None
     __sub_socket = None
-    _subscriber = None
-    __keep_alive = None
-    __connection_info = {}
+    __connection_info = None
 
     def __init__(self,
                  context: Context = Context(),
                  locker: Lock = Lock(),
-                 emitter: EventManager = EventManager(),
-                 keep_alive=True):
+                 emitter: EventManager = EventManager()):
         self.__context = context
         self.__locker = locker
+
         self._emitter = emitter
-        self.__keep_alive = keep_alive
         self._emitter.on('RECV_MESSAGE', lambda message: self._receive(decode_message(message, True)))
 
     @property
@@ -64,7 +61,7 @@ class Touchance(object):
             'Param': {'SystemName': self.__app_id, 'ServiceKey': self.__secret}
         })
 
-        if self.is_connected is True and self.__keep_alive is True:
+        if self.is_connected is True:
             self.keep_alive()
 
         return self.is_connected
@@ -72,8 +69,8 @@ class Touchance(object):
     def disconnect(self):
         self.__connection_info = self._send({'Request': 'LOGOUT', 'SessionKey': self.session_key})
 
-        if self._subscriber is not None:
-            self._subscriber.stop()
+        if self.__subscriber is not None:
+            self.__subscriber.stop()
 
         return True
 
@@ -81,17 +78,17 @@ class Touchance(object):
         if self.is_connected is True and self.__sub_socket is None:
             self.__sub_socket = self.__create_sub_socket()
 
-        if self._subscriber is not None:
-            self._subscriber.stop()
+        if self.__subscriber is not None:
+            self.__subscriber.stop()
 
         if self.__sub_socket is not None:
-            self._subscriber = Subscriber(self.__sub_socket, self._emitter)
+            self.__subscriber = Subscriber(self.__sub_socket, self._emitter)
 
-        self._subscriber.start()
+        self.__subscriber.start()
 
         return self
 
-    def pong(self, _id: str):
+    def pong(self, _id=''):
         return self._send({'Request': 'PONG', 'SessionKey': self.session_key, 'ID': _id})
 
     def query_instrument_info(self, quote_symbol: str):
@@ -161,31 +158,10 @@ class Touchance(object):
         self.__locker.release()
 
     def __get_info(self, key: str):
-        return self.__connection_info[key] if key in self.__connection_info else None
+        return self.__connection_info.get(key) if self.__connection_info is not None else None
 
 
-class Subscriber(Thread):
-    __stop = False
-
-    def __init__(self, socket, emitter: EventManager, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.__socket = socket
-        self.__emitter = emitter
-
-    def stop(self):
-        self.__stop = True
-
-    def run(self):
-        while True:
-            recv = self.__socket.recv()
-
-            if self.__stop is True or '__pytest_stop__' in recv.decode():
-                break
-
-            self.__emitter.emit('RECV_MESSAGE', recv)
-
-
-class QuoteAPI(Touchance):
+class QuoteAPI(TCore):
     port = '51237'
 
     def subscribe_quote(self, quote_symbol: str):
@@ -249,19 +225,19 @@ class QuoteAPI(Touchance):
         super()._receive(result)
 
         if result.get('Status') == 'Ready':
-            for history in self.__get_histories(result):
-                self._emitter.emit('HISTORY', history, result)
-
-    def __get_histories(self, result):
-        qry_index = ""
-        while True:
-            data = self.get_history(
-                result.get('Symbol'),
-                result.get('DataType'),
-                result.get('StartTime'),
-                result.get('EndTime'),
-                qry_index
+            generator = self.get_histories(
+                result.get('Symbol'), result.get('DataType'), result.get('StartTime'), result.get('EndTime')
             )
+            histories = []
+            for history in generator:
+                self._emitter.emit('HISTORY', history, result)
+                histories.append(history)
+            self._emitter.emit('HISTORIES', histories, result)
+
+    def get_histories(self, quote_symbol: str, data_type: str, start_time: str, end_time: str):
+        qry_index = ''
+        while True:
+            data = self.get_history(quote_symbol, data_type, start_time, end_time, qry_index)
             histories = data.get('HisData')
 
             if len(histories) == 0:
@@ -273,5 +249,5 @@ class QuoteAPI(Touchance):
             qry_index = histories[-1].get('QryIndex')
 
 
-class TradeAPI(Touchance):
+class TradeAPI(TCore):
     port = '51207'
