@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 from zmq import REQ
 
-from touchance import QuoteAPI
+from src.touchance import QuoteAPI
 
 
 def test_connect(mock_quote_api, context, locker, socket):
@@ -90,7 +90,7 @@ def test_keep_alive(mock_quote_api, context, socket):
         b'stop\x00'
     ]
 
-    quote_api.keep_alive(threads=False)
+    quote_api.keep_alive()
 
     socket.send_json.assert_called_with({"Request": "PONG", "SessionKey": quote_api.session_key, "ID": 'TC'})
 

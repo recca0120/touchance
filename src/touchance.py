@@ -3,10 +3,9 @@ from json import loads
 from threading import Lock, Thread
 from typing import Callable
 
-from event_bus import EventBus
 from zmq import Context, REQ, SUB, SUBSCRIBE
 
-bus = EventBus()
+from src.event_manager import EventManager
 
 
 def decode_message(message: bytes, clean_prefix=False):
@@ -21,6 +20,7 @@ def decode_message(message: bytes, clean_prefix=False):
 class Touchance(object):
     host = '127.0.0.1'
     port = '51237'
+    _emitter = EventManager()
     __app_id = 'ZMQ'
     __secret = '8076c9867a372d2a9a814ae710c256e2'
     __context = None
@@ -29,22 +29,11 @@ class Touchance(object):
     __subscriber = None
     __keep_alive = None
     __connection_info = {}
-    __listeners = {}
 
     def __init__(self, context: Context = None, locker: Lock = None, keep_alive=True):
         self.set_context(context).set_locker(locker)
         self.__keep_alive = keep_alive
-
-        @bus.on('message')
-        def receive(message: bytes):
-            data = decode_message(message, True)
-            data_type = data['DataType']
-            if data_type == 'PING':
-                self.pong('TC')
-
-            if data_type in self.__listeners:
-                for func in self.__listeners[data_type]:
-                    func(data)
+        self._emitter.on('message', lambda message: self._receive(decode_message(message, True)))
 
     @property
     def session_key(self):
@@ -88,9 +77,9 @@ class Touchance(object):
 
         return True
 
-    def keep_alive(self, threads=True):
+    def keep_alive(self):
         if self.is_connected is True:
-            self.__subscriber = Subscriber(self.__create_sub_socket(), threads)
+            self.__subscriber = Subscriber(self.__create_sub_socket(), self._emitter)
             self.__subscriber.start()
 
     def pong(self, _id: str):
@@ -120,6 +109,17 @@ class Touchance(object):
 
     def query_all_stock(self):
         return self.query_all_instrument('Fut2')
+
+    def on(self, event_name: str, func: Callable):
+        self._emitter.on(event_name.upper(), func)
+
+    def _receive(self, result: dict):
+        data_type = result['DataType']
+
+        self._emitter.emit(data_type, result)
+
+        if data_type == 'PING':
+            self.pong('TC')
 
     def _send(self, params: dict):
         self.__lock()
@@ -154,20 +154,14 @@ class Touchance(object):
     def __get_info(self, key: str):
         return self.__connection_info[key] if key in self.__connection_info else None
 
-    def on(self, event_name: str, func: Callable):
-        if event_name not in self.__listeners:
-            self.__listeners[event_name] = []
-
-        self.__listeners[event_name].append(func)
-
 
 class Subscriber(Thread):
     __stop = False
 
-    def __init__(self, socket, threads: bool, *args, **kwargs):
+    def __init__(self, socket, emitter: EventManager, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.__socket = socket
-        self.__threads = threads
+        self.__emitter = emitter
 
     def stop(self):
         self.__stop = True
@@ -180,7 +174,7 @@ class Subscriber(Thread):
             if self.__stop is True or 'stop' in message:
                 break
 
-            bus.emit('message', recv, threads=self.__threads)
+            self.__emitter.emit('message', recv)
 
 
 class QuoteAPI(Touchance):
