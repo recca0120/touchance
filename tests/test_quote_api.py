@@ -231,9 +231,6 @@ def test_keep_alive_pong(mock_quote_api, socket, sub_socket):
 
     quote_api.keep_alive()
 
-    subscriber = quote_api.get_subscriber()
-    subscriber.stop()
-
     socket.send_json.assert_called_with({"Request": "PONG", "SessionKey": quote_api.session_key, "ID": 'TC'})
 
 

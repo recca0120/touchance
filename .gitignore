@@ -1,5 +1,5 @@
 .idea
-.coverge
+.coverage
 .pytest_cache
 .virtualenv
 tests/.pytest_cache

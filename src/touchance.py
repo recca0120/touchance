@@ -57,9 +57,6 @@ class Touchance(object):
     def is_connected(self):
         return self.__get_info('Reply') == 'LOGIN' and self.__get_info('Success') == 'OK'
 
-    def get_subscriber(self):
-        return self._subscriber
-
     def connect(self):
         self.__socket = self.__create_socket(REQ, self.port)
         self.__connection_info = self._send({
@@ -192,32 +189,20 @@ class QuoteAPI(Touchance):
     port = '51237'
 
     def subscribe_quote(self, quote_symbol: str):
-        info = self._send({'Request': 'SUBQUOTE', 'SessionKey': self.session_key, 'Param': {
-            'Symbol': quote_symbol, 'SubDataType': 'REALTIME'
-        }})
-
-        return info.get('Reply') == 'SUBQUOTE' and info.get('Success') == 'OK'
+        return self.subscribe('SUBQUOTE', {'Symbol': quote_symbol, 'SubDataType': 'REALTIME'})
 
     def unsubscribe_quote(self, quote_symbol: str):
-        info = self._send({'Request': 'UNSUBQUOTE', 'SessionKey': self.session_key, 'Param': {
-            'Symbol': quote_symbol, 'SubDataType': 'REALTIME'
-        }})
-
-        return info.get('Reply') == 'UNSUBQUOTE' and info.get('Success') == 'OK'
+        return self.subscribe('UNSUBQUOTE', {'Symbol': quote_symbol, 'SubDataType': 'REALTIME'})
 
     def subscribe_greeks(self, quote_symbol: str, greeks_type='REAL'):
-        info = self._send({'Request': 'SUBQUOTE', 'SessionKey': self.session_key, 'Param': {
+        return self.subscribe('SUBQUOTE', {
             'Symbol': quote_symbol, 'SubDataType': 'GREEKS', 'GreeksType': greeks_type
-        }})
-
-        return info.get('Reply') == 'SUBQUOTE' and info.get('Success') == 'OK'
+        })
 
     def unsubscribe_greeks(self, quote_symbol: str, greeks_type='REAL'):
-        info = self._send({'Request': 'UNSUBQUOTE', 'SessionKey': self.session_key, 'Param': {
+        return self.subscribe('UNSUBQUOTE', {
             'Symbol': quote_symbol, 'SubDataType': 'GREEKS', 'GreeksType': greeks_type
-        }})
-
-        return info.get('Reply') == 'UNSUBQUOTE' and info.get('Success') == 'OK'
+        })
 
     def subscribe_history(self, quote_symbol: str, data_type: str, start_time: str, end_time: str):
         """訂閱歷史資料.
@@ -230,11 +215,9 @@ class QuoteAPI(Touchance):
         start_time: str
         end_time: str
         """
-        info = self._send({'Request': 'SUBQUOTE', 'SessionKey': self.session_key, 'Param': {
+        return self.subscribe('SUBQUOTE', {
             'Symbol': quote_symbol, 'SubDataType': data_type, 'StartTime': start_time, 'EndTime': end_time
-        }})
-
-        return info.get('Reply') == 'SUBQUOTE' and info.get('Success') == 'OK'
+        })
 
     def unsubscribe_history(self, quote_symbol: str, data_type: str, start_time: str, end_time: str):
         """取溑訂閱歷史資料.
@@ -247,11 +230,14 @@ class QuoteAPI(Touchance):
         start_time: str
         end_time: str
         """
-        info = self._send({'Request': 'UNSUBQUOTE', 'SessionKey': self.session_key, 'Param': {
+        return self.subscribe('UNSUBQUOTE', {
             'Symbol': quote_symbol, 'SubDataType': data_type, 'StartTime': start_time, 'EndTime': end_time
-        }})
+        })
 
-        return info.get('Reply') == 'UNSUBQUOTE' and info.get('Success') == 'OK'
+    def subscribe(self, request: str, param: dict):
+        info = self._send({'Request': request, 'SessionKey': self.session_key, 'Param': param})
+
+        return info.get('Reply') == request and info.get('Success') == 'OK'
 
     def get_history(self, quote_symbol: str, data_type: str, start_time: str, end_time: str, qry_index):
         return self._send({'Request': 'GETHISDATA', 'SessionKey': self.session_key, 'Param': {
@@ -268,26 +254,23 @@ class QuoteAPI(Touchance):
 
     def __get_histories(self, result):
         qry_index = ""
-        try:
-            while True:
-                data = self.get_history(
-                    result.get('Symbol'),
-                    result.get('DataType'),
-                    result.get('StartTime'),
-                    result.get('EndTime'),
-                    qry_index
-                )
-                histories = data.get('HisData')
+        while True:
+            data = self.get_history(
+                result.get('Symbol'),
+                result.get('DataType'),
+                result.get('StartTime'),
+                result.get('EndTime'),
+                qry_index
+            )
+            histories = data.get('HisData')
 
-                if len(histories) == 0:
-                    break
+            if len(histories) == 0:
+                break
 
-                for history in histories:
-                    yield history
+            for history in histories:
+                yield history
 
-                qry_index = histories[-1].get('QryIndex')
-        except StopIteration:
-            pass
+            qry_index = histories[-1].get('QryIndex')
 
 
 class TradeAPI(Touchance):
