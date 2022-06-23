@@ -1,4 +1,5 @@
 .idea
+.coverge
 .pytest_cache
 .virtualenv
 tests/.pytest_cache

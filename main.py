@@ -38,6 +38,18 @@ def OnRealTimeQuote(symbol):
     # print("賣量：", symbol['AskVolume'])
 
 
+def history(quote_api):
+    symbol = 'TC.F.TWF.FITX.HOT'
+    data_type = '1K'
+    start_time = '2021030100'
+    end_time = '2021031700'
+
+    # quote_api.on('history', lambda data, info: print(data, info))
+
+    print(quote_api.unsubscribe_history(symbol, data_type, start_time, end_time))
+    print(quote_api.subscribe_history(symbol, data_type, start_time, end_time))
+
+
 def subscribe(quote_api):
     quote_api.on('REALTIME', lambda data: print(datetime.datetime.now()))
     quote_api.on('REALTIME', lambda data: OnRealTimeQuote(data['Quote']))
@@ -62,6 +74,7 @@ def main():
 
     # quote_api.query_all_instrument('Fut')
     # subscribe(quote_api)
+    history(quote_api)
 
 
 if __name__ == '__main__':

@@ -8,8 +8,11 @@ from zmq import Context, REQ, SUB, SUBSCRIBE
 from src.event_manager import EventManager
 
 
-def decode_message(message: bytes, clean_prefix=False):
-    message = message.decode('utf-8').rstrip('\x00')
+def decode_message(raw_message: bytes, clean_prefix=False):
+    # with open('history-1k.txt', 'ab') as fp:
+    #     fp.write(raw_message)
+    #     fp.write("\n".encode())
+    message = raw_message.decode('utf-8').rstrip('\x00')
     if clean_prefix is True:
         index = re.search(':', message).span()[1]
         message = message[index:]
@@ -20,20 +23,27 @@ def decode_message(message: bytes, clean_prefix=False):
 class Touchance(object):
     host = '127.0.0.1'
     port = '51237'
-    _emitter = EventManager()
+    _emitter = None
     __app_id = 'ZMQ'
     __secret = '8076c9867a372d2a9a814ae710c256e2'
     __context = None
     __locker = None
     __socket = None
-    __subscriber = None
+    __sub_socket = None
+    _subscriber = None
     __keep_alive = None
     __connection_info = {}
 
-    def __init__(self, context: Context = None, locker: Lock = None, keep_alive=True):
-        self.set_context(context).set_locker(locker)
+    def __init__(self,
+                 context: Context = Context(),
+                 locker: Lock = Lock(),
+                 emitter: EventManager = EventManager(),
+                 keep_alive=True):
+        self.__context = context
+        self.__locker = locker
+        self._emitter = emitter
         self.__keep_alive = keep_alive
-        self._emitter.on('message', lambda message: self._receive(decode_message(message, True)))
+        self._emitter.on('RECV_MESSAGE', lambda message: self._receive(decode_message(message, True)))
 
     @property
     def session_key(self):
@@ -47,15 +57,8 @@ class Touchance(object):
     def is_connected(self):
         return self.__get_info('Reply') == 'LOGIN' and self.__get_info('Success') == 'OK'
 
-    def set_context(self, context: Context):
-        self.__context = context if context is not None else Context()
-
-        return self
-
-    def set_locker(self, locker: Lock):
-        self.__locker = locker if locker is not None else Lock()
-
-        return self
+    def get_subscriber(self):
+        return self._subscriber
 
     def connect(self):
         self.__socket = self.__create_socket(REQ, self.port)
@@ -72,15 +75,24 @@ class Touchance(object):
     def disconnect(self):
         self.__connection_info = self._send({'Request': 'LOGOUT', 'SessionKey': self.session_key})
 
-        if self.__subscriber is not None:
-            self.__subscriber.stop()
+        if self._subscriber is not None:
+            self._subscriber.stop()
 
         return True
 
     def keep_alive(self):
-        if self.is_connected is True:
-            self.__subscriber = Subscriber(self.__create_sub_socket(), self._emitter)
-            self.__subscriber.start()
+        if self.is_connected is True and self.__sub_socket is None:
+            self.__sub_socket = self.__create_sub_socket()
+
+        if self._subscriber is not None:
+            self._subscriber.stop()
+
+        if self.__sub_socket is not None:
+            self._subscriber = Subscriber(self.__sub_socket, self._emitter)
+
+        self._subscriber.start()
+
+        return self
 
     def pong(self, _id: str):
         return self._send({'Request': 'PONG', 'SessionKey': self.session_key, 'ID': _id})
@@ -114,22 +126,22 @@ class Touchance(object):
         self._emitter.on(event_name.upper(), func)
 
     def _receive(self, result: dict):
-        data_type = result['DataType']
-
+        self._emitter.emit('MESSAGE', result)
+        data_type = result.get('DataType')
         self._emitter.emit(data_type, result)
 
         if data_type == 'PING':
             self.pong('TC')
 
-    def _send(self, params: dict):
+    def _send(self, params: dict, clear_prefix=False):
         self.__lock()
         self.__socket.send_json(params)
         recv = self.__socket.recv()
         self.__unlock()
-        data = decode_message(recv)
+        data: dict = decode_message(recv, clear_prefix)
 
-        if 'Success' in data and data['Success'] != 'OK' and 'ErrMsg' in data:
-            raise RuntimeError(data['ErrMsg'])
+        if 'Success' in data and data.get('Success') != 'OK' and 'ErrMsg' in data:
+            raise RuntimeError(data.get('ErrMsg'))
 
         return data
 
@@ -169,12 +181,11 @@ class Subscriber(Thread):
     def run(self):
         while True:
             recv = self.__socket.recv()
-            message = recv.decode('utf-8')
 
-            if self.__stop is True or 'stop' in message:
+            if self.__stop is True or '__pytest_stop__' in recv.decode():
                 break
 
-            self.__emitter.emit('message', recv)
+            self.__emitter.emit('RECV_MESSAGE', recv)
 
 
 class QuoteAPI(Touchance):
@@ -185,28 +196,98 @@ class QuoteAPI(Touchance):
             'Symbol': quote_symbol, 'SubDataType': 'REALTIME'
         }})
 
-        return info['Success'] == 'OK'
+        return info.get('Reply') == 'SUBQUOTE' and info.get('Success') == 'OK'
 
     def unsubscribe_quote(self, quote_symbol: str):
         info = self._send({'Request': 'UNSUBQUOTE', 'SessionKey': self.session_key, 'Param': {
             'Symbol': quote_symbol, 'SubDataType': 'REALTIME'
         }})
 
-        return info['Success'] == 'OK'
+        return info.get('Reply') == 'UNSUBQUOTE' and info.get('Success') == 'OK'
 
     def subscribe_greeks(self, quote_symbol: str, greeks_type='REAL'):
         info = self._send({'Request': 'SUBQUOTE', 'SessionKey': self.session_key, 'Param': {
             'Symbol': quote_symbol, 'SubDataType': 'GREEKS', 'GreeksType': greeks_type
         }})
 
-        return info['Success'] == 'OK'
+        return info.get('Reply') == 'SUBQUOTE' and info.get('Success') == 'OK'
 
     def unsubscribe_greeks(self, quote_symbol: str, greeks_type='REAL'):
         info = self._send({'Request': 'UNSUBQUOTE', 'SessionKey': self.session_key, 'Param': {
             'Symbol': quote_symbol, 'SubDataType': 'GREEKS', 'GreeksType': greeks_type
         }})
 
-        return info['Success'] == 'OK'
+        return info.get('Reply') == 'UNSUBQUOTE' and info.get('Success') == 'OK'
+
+    def subscribe_history(self, quote_symbol: str, data_type: str, start_time: str, end_time: str):
+        """訂閱歷史資料.
+
+        Parameters
+        ----------
+        quote_symbol: str
+        data_type: str
+            TICKS, 1K, DK
+        start_time: str
+        end_time: str
+        """
+        info = self._send({'Request': 'SUBQUOTE', 'SessionKey': self.session_key, 'Param': {
+            'Symbol': quote_symbol, 'SubDataType': data_type, 'StartTime': start_time, 'EndTime': end_time
+        }})
+
+        return info.get('Reply') == 'SUBQUOTE' and info.get('Success') == 'OK'
+
+    def unsubscribe_history(self, quote_symbol: str, data_type: str, start_time: str, end_time: str):
+        """取溑訂閱歷史資料.
+
+        Parameters
+        ----------
+        quote_symbol: str
+        data_type: str
+            TICKS, 1K, DK
+        start_time: str
+        end_time: str
+        """
+        info = self._send({'Request': 'UNSUBQUOTE', 'SessionKey': self.session_key, 'Param': {
+            'Symbol': quote_symbol, 'SubDataType': data_type, 'StartTime': start_time, 'EndTime': end_time
+        }})
+
+        return info.get('Reply') == 'UNSUBQUOTE' and info.get('Success') == 'OK'
+
+    def get_history(self, quote_symbol: str, data_type: str, start_time: str, end_time: str, qry_index):
+        return self._send({'Request': 'GETHISDATA', 'SessionKey': self.session_key, 'Param': {
+            'Symbol': quote_symbol, 'SubDataType': data_type, 'StartTime': start_time, 'EndTime': end_time,
+            'QryIndex': qry_index
+        }}, True)
+
+    def _receive(self, result: dict):
+        super()._receive(result)
+
+        if result.get('Status') == 'Ready':
+            for history in self.__get_histories(result):
+                self._emitter.emit('HISTORY', history, result)
+
+    def __get_histories(self, result):
+        qry_index = ""
+        try:
+            while True:
+                data = self.get_history(
+                    result.get('Symbol'),
+                    result.get('DataType'),
+                    result.get('StartTime'),
+                    result.get('EndTime'),
+                    qry_index
+                )
+                histories = data.get('HisData')
+
+                if len(histories) == 0:
+                    break
+
+                for history in histories:
+                    yield history
+
+                qry_index = histories[-1].get('QryIndex')
+        except StopIteration:
+            pass
 
 
 class TradeAPI(Touchance):

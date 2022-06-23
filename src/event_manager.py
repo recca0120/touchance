@@ -2,7 +2,8 @@ from typing import Callable
 
 
 class EventManager(object):
-    __listeners = {}
+    def __init__(self):
+        self.__listeners = {}
 
     def on(self, event_name: str, func: Callable):
         if event_name not in self.__listeners:
