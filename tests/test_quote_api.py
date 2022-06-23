@@ -1,3 +1,4 @@
+import os.path
 from unittest.mock import MagicMock
 
 import pytest
@@ -37,6 +38,26 @@ def test_disconnect(mock_quote_api, socket, locker):
     assert locker.release.called
 
 
+def test_query_all_instrument_info(mock_quote_api, socket):
+    quote_api = mock_quote_api
+    quote_api.connect()
+
+    with open(os.path.join(os.path.dirname(__file__), 'fixtures/query_all_instrument.txt'), 'rb') as fp:
+        message = fp.readline()
+        fp.close()
+        socket.recv.reset_mock()
+        socket.recv.return_value = message
+
+    info = quote_api.query_all_instrument('Fut')
+    assert info['Success'] == 'OK'
+
+    socket.send_json.assert_called_with({
+        'Request': 'QUERYALLINSTRUMENT',
+        'SessionKey': '777d79aadfaff06597919a9ce30f8b46',
+        'Type': 'Fut'
+    })
+
+
 def test_query_instrument_info(mock_quote_api, socket):
     quote_api = mock_quote_api
     quote_api.connect()
@@ -49,6 +70,12 @@ def test_query_instrument_info(mock_quote_api, socket):
 
     assert info['Success'] == 'OK'
     assert info['Info']['TC.F.TWF.FITX']['Name.CHT'] == '臺指'
+
+    socket.send_json.assert_called_with({
+        'Request': 'QUERYINSTRUMENTINFO',
+        'SessionKey': '777d79aadfaff06597919a9ce30f8b46',
+        'Symbol': 'TC.F.TWF.FITX.HOT'
+    })
 
 
 def test_keep_alive(mock_quote_api, context, socket):

@@ -44,6 +44,10 @@ def main():
 
     print(quote_api.sub_port)
 
+    quote_api.query_all_instrument('Fut')
+
+    return
+
     # print(quote_api.query_instrument_info('TC.F.TWF.FITX.HOT'))
     quote_api.unsubscribe_quote('TC.F.TWF.FITX.HOT')
     quote_api.subscribe_quote('TC.F.TWF.FITX.HOT')

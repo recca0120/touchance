@@ -99,7 +99,7 @@ class Touchance(object):
     def query_instrument_info(self, quote_symbol: str):
         return self._send({'Request': 'QUERYINSTRUMENTINFO', 'SessionKey': self.session_key, 'Symbol': quote_symbol})
 
-    def query_all_instrument_info(self, query_type: str):
+    def query_all_instrument(self, query_type: str):
         """查詢指定類型合約列表.
 
         Parameters
@@ -112,14 +112,14 @@ class Touchance(object):
 
         return self._send({'Request': 'QUERYALLINSTRUMENT', 'SessionKey': self.session_key, 'Type': query_type})
 
-    def query_all_future_info(self):
-        return self.query_all_instrument_info('Fut')
+    def query_all_future(self):
+        return self.query_all_instrument('Fut')
 
-    def query_all_option_info(self):
-        return self.query_all_instrument_info('Opt')
+    def query_all_option(self):
+        return self.query_all_instrument('Opt')
 
-    def query_all_stock_info(self):
-        return self.query_all_instrument_info('Fut2')
+    def query_all_stock(self):
+        return self.query_all_instrument('Fut2')
 
     def _send(self, params: dict):
         self.__lock()
@@ -127,6 +127,7 @@ class Touchance(object):
         recv = self.__socket.recv()
         self.__unlock()
         data = decode_message(recv)
+
         if 'Success' in data and data['Success'] != 'OK' and 'ErrMsg' in data:
             raise RuntimeError(data['ErrMsg'])
 

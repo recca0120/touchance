@@ -1,3 +1,4 @@
 .idea
 .pytest_cache
 .virtualenv
+tests/.pytest_cache
