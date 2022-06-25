@@ -1,3 +1,4 @@
+from threading import Thread
 from typing import Callable
 
 
@@ -17,4 +18,5 @@ class EventManager(object):
     def emit(self, event_name: str, *args, **kwargs):
         if self.has(event_name) is True:
             for func in self.__listeners[event_name]:
-                func(*args, **kwargs)
+                Thread(target=func, args=args, kwargs=kwargs).start()
+                # func(*args, **kwargs)
