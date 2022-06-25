@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 
 from src.quant_bridge import QuoteAPI
@@ -38,7 +39,7 @@ def OnRealTimeQuote(symbol):
     # print("賣量：", symbol['AskVolume'])
 
 
-def history(quote_api):
+async def history(quote_api):
     symbol = 'TC.F.TWF.FITX.HOT'
     data_type = '1K'
     start_time = '2021030100'
@@ -47,39 +48,47 @@ def history(quote_api):
     quote_api.on('message', lambda data: print(data))
     quote_api.on('history', lambda data, info: print(data, info))
 
-    print(quote_api.unsubscribe_history(symbol, data_type, start_time, end_time))
-    print(quote_api.subscribe_history(symbol, data_type, start_time, end_time))
+    print(await quote_api.unsubscribe_history(symbol, data_type, start_time, end_time))
+    print(await quote_api.subscribe_history(symbol, data_type, start_time, end_time))
     # for his in quote_api.get_histories(symbol, data_type, start_time, end_time):
     #     print(his)
 
 
-def subscribe(quote_api):
-    # quote_api.on('PING', lambda data: print(datetime.datetime.now()))
-    # quote_api.on('PING', lambda data: print(data))
+async def subscribe(quote_api):
     quote_api.on('REALTIME', lambda data: print(datetime.datetime.now()))
     quote_api.on('REALTIME', lambda data: OnRealTimeQuote(data['Quote']))
     # quote_api.on('GREEKS', lambda data: print('GREEKS', data))
 
-    # print(quote_api.query_instrument_info('TC.F.TWF.FITX.HOT'))
-    quote_api.unsubscribe_quote('TC.F.TWF.FITX.HOT')
-    quote_api.subscribe_quote('TC.F.TWF.FITX.HOT')
-    quote_api.unsubscribe_quote('TC.F.CBOT.YM.202209')
-    quote_api.subscribe_quote('TC.F.CBOT.YM.202209')
-    # quote_api.unsubscribe_greeks('TC.F.CBOT.YM.202209')
-    # quote_api.subscribe_greeks('TC.F.CBOT.YM.202209')
+    # print(await quote_api.query_instrument_info('TC.F.TWF.FITX.HOT'))
+    await quote_api.unsubscribe_quote('TC.F.TWF.FITX.HOT')
+    await quote_api.subscribe_quote('TC.F.TWF.FITX.HOT')
+    await quote_api.unsubscribe_quote('TC.F.CBOT.YM.202209')
+    await quote_api.subscribe_quote('TC.F.CBOT.YM.202209')
+    # await quote_api.unsubscribe_greeks('TC.F.CBOT.YM.202209')
+    # await quote_api.subscribe_greeks('TC.F.CBOT.YM.202209')
 
 
-def main():
-    quote_api = QuoteAPI()
-    quote_api.connect()
-    quote_api.handle()
+async def main():
+    loop = asyncio.get_running_loop()
+    stop = loop.create_future()
+
+    quote_api = QuoteAPI(event_loop=loop)
+    await quote_api.connect()
+    quote_api.serve()
 
     print(quote_api.sub_port)
 
+    quote_api.on('PING', lambda data: print(datetime.datetime.now()))
+    quote_api.on('PING', lambda data: print(data))
+
     # quote_api.query_all_instrument('Fut')
-    subscribe(quote_api)
-    # history(quote_api)
+    await asyncio.gather(
+        # subscribe(quote_api),
+        history(quote_api)
+    )
+
+    await stop
 
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
