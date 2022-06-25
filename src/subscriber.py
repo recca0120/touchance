@@ -11,7 +11,7 @@ class Subscriber(Thread):
         self.__socket = socket
         self.__emitter = emitter
 
-    def stop(self):
+    def cancel(self):
         self.__stop = True
 
     def run(self):

@@ -220,7 +220,7 @@ def test_pong(mock_quote_api, socket, emitter):
     socket.send_json.assert_called_with({"Request": "PONG", "SessionKey": quote_api.session_key, "ID": 'TC'})
 
 
-def test_keep_alive_pong(mock_quote_api, socket, sub_socket):
+def test_broadcast_pong(mock_quote_api, socket, sub_socket):
     quote_api = mock_quote_api
     quote_api.connect()
 
@@ -229,12 +229,12 @@ def test_keep_alive_pong(mock_quote_api, socket, sub_socket):
     socket.recv.reset_mock()
     socket.recv.side_effect = [b'{"Reply":"PONG","Success":"OK"}\x00']
 
-    quote_api.keep_alive()
+    quote_api.handle()
 
     socket.send_json.assert_called_with({"Request": "PONG", "SessionKey": quote_api.session_key, "ID": 'TC'})
 
 
-def test_keep_alive_get_history_1k(mock_quote_api, socket, sub_socket):
+def test_broadcast_get_history_1k(mock_quote_api, socket, sub_socket):
     quote_api = mock_quote_api
     quote_api.connect()
 
@@ -248,7 +248,7 @@ def test_keep_alive_get_history_1k(mock_quote_api, socket, sub_socket):
         os.path.join(os.path.dirname(__file__), 'fixtures/history-1k.txt'), 'rb'
     ).read().splitlines()
 
-    quote_api.keep_alive()
+    quote_api.handle()
 
     symbol = 'TC.F.TWF.FITX.HOT'
     data_type = '1K'

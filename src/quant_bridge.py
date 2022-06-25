@@ -2,9 +2,9 @@ import re
 from abc import ABC
 from json import loads
 from threading import Lock
-from typing import Callable
+from typing import Callable, Optional
 
-from zmq import Context, REQ, SUB, SUBSCRIBE
+from zmq import Context, REQ, SUB, SUBSCRIBE, Socket
 
 from src.event_manager import EventManager
 from src.subscriber import Subscriber
@@ -27,10 +27,10 @@ class TCore(ABC):
     port = '51237'
     __app_id = 'ZMQ'
     __secret = '8076c9867a372d2a9a814ae710c256e2'
-    __socket = None
-    __subscriber = None
-    __sub_socket = None
-    __connection_info = None
+    __socket: Optional[Socket] = None
+    __sub_socket: Optional[Socket] = None
+    __subscriber: Optional[Subscriber] = None
+    __connection_info: Optional[dict] = None
 
     def __init__(self,
                  context: Context = Context(),
@@ -61,32 +61,29 @@ class TCore(ABC):
             'Param': {'SystemName': self.__app_id, 'ServiceKey': self.__secret}
         })
 
-        if self.is_connected is True:
-            self.keep_alive()
-
         return self.is_connected
 
     def disconnect(self):
         self.__connection_info = self._send({'Request': 'LOGOUT', 'SessionKey': self.session_key})
 
         if self.__subscriber is not None:
-            self.__subscriber.stop()
+            self.__subscriber.cancel()
 
         return True
 
-    def keep_alive(self):
+    def handle(self):
         if self.is_connected is True and self.__sub_socket is None:
             self.__sub_socket = self.__create_sub_socket()
 
         if self.__subscriber is not None:
-            self.__subscriber.stop()
+            self.__subscriber.cancel()
 
         if self.__sub_socket is not None:
             self.__subscriber = Subscriber(self.__sub_socket, self._emitter)
 
         self.__subscriber.start()
 
-        return self
+        return self.__subscriber
 
     def pong(self, _id=''):
         return self._send({'Request': 'PONG', 'SessionKey': self.session_key, 'ID': _id})
@@ -243,8 +240,7 @@ class QuoteAPI(TCore):
             if len(histories) == 0:
                 break
 
-            for history in histories:
-                yield history
+            yield from histories
 
             qry_index = histories[-1].get('QryIndex')
 

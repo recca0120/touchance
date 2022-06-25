@@ -72,6 +72,7 @@ def subscribe(quote_api):
 def main():
     quote_api = QuoteAPI()
     quote_api.connect()
+    quote_api.handle()
 
     print(quote_api.sub_port)
 
