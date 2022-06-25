@@ -46,12 +46,12 @@ async def history(quote_api):
     end_time = '2021031700'
 
     quote_api.on('message', lambda data: print(data))
-    quote_api.on('history', lambda data, info: print(data, info))
+    quote_api.on('history', lambda data: print(data))
 
-    print(await quote_api.unsubscribe_history(symbol, data_type, start_time, end_time))
-    print(await quote_api.subscribe_history(symbol, data_type, start_time, end_time))
-    # for his in quote_api.get_histories(symbol, data_type, start_time, end_time):
-    #     print(his)
+    # print(await quote_api.unsubscribe_history(symbol, data_type, start_time, end_time))
+    # print(await quote_api.subscribe_history(symbol, data_type, start_time, end_time))
+    async for his_data in quote_api.get_histories(symbol, data_type, start_time, end_time):
+        print(his_data)
 
 
 async def subscribe(quote_api):

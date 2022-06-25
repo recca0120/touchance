@@ -242,19 +242,30 @@ class QuoteAPI(TCore):
             'QryIndex': qry_index
         }}, True)
 
+    async def get_histories(self, quote_symbol: str, data_type: str, start_time: str, end_time: str):
+        try:
+            await self.subscribe_history(quote_symbol, data_type, start_time, end_time)
+        except RuntimeError as e:
+            logging.error(str(e))
+        await self.pong()
+        await asyncio.sleep(3)
+        async for history in self.__get_histories(quote_symbol, data_type, start_time, end_time):
+            yield history
+
     async def _receive(self, result: dict):
         await super()._receive(result)
 
         if result.get('Status') == 'Ready':
             histories = []
-            async for history in self.get_histories(
-                    result.get('Symbol'), result.get('DataType'), result.get('StartTime'), result.get('EndTime')
-            ):
-                self._emitter.emit('HISTORY', history, result)
+            gen = self.__get_histories(result.get('Symbol'), result.get('DataType'), result.get('StartTime'),
+                                       result.get('EndTime'))
+            async for history in gen:
+                self._emitter.emit('HISTORY', history)
                 histories.append(history)
-            self._emitter.emit('HISTORIES', histories, result)
+            self._emitter.emit('HISTORIES', histories)
 
-    async def get_histories(self, quote_symbol: str, data_type: str, start_time: str, end_time: str):
+    async def __get_histories(self, quote_symbol: str, data_type: str, start_time: str, end_time: str):
+        info = {'Symbol': quote_symbol}
         qry_index = ''
         while True:
             data = await self.get_history(quote_symbol, data_type, start_time, end_time, qry_index)
@@ -269,7 +280,12 @@ class QuoteAPI(TCore):
                 break
 
             for history in histories:
-                yield history
+                yield {
+                    'DataType': data_type,
+                    'StartTime': start_time,
+                    'EndTime': end_time,
+                    'HisData': {**info, **history}
+                }
 
             qry_index = histories[-1].get('QryIndex')
 
