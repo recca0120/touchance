@@ -11,13 +11,14 @@ from zmq import REQ, SUB, SUBSCRIBE
 from zmq.asyncio import Context, Socket
 
 
-def decode_message(raw_message: bytes, clean_prefix=False):
+def decode_message(raw_message: bytes):
     # with open('history-1k.txt', 'ab') as fp:
     #     fp.write(raw_message)
     #     fp.write("\n".encode())
     message = raw_message.decode('utf-8').rstrip('\x00')
-    if clean_prefix is True:
-        index = re.search(':', message).span()[1]
+    matched = re.match(r'(^[\w\d.]+:){', message)
+    if matched is not None:
+        index = len(matched.group(1))
         message = message[index:]
 
     try:
@@ -52,7 +53,7 @@ class TCore(ABC):
         self._emitter = emitter if emitter is not None else AsyncIOEventEmitter(self.__event_loop)
 
         async def recv_message(message):
-            return await self._receive(decode_message(message, True))
+            return await self._receive(decode_message(message))
 
         self._emitter.on('RECV_MESSAGE', recv_message)
 
@@ -148,12 +149,12 @@ class TCore(ABC):
         if data_type == 'PING':
             self.__event_loop.create_task(self.pong('TC'))
 
-    async def _send(self, params: dict, clear_prefix=False):
+    async def _send(self, params: dict):
         await self.__lock()
         self.__socket.send_json(params)
         recv = await self.__socket.recv()
         self.__unlock()
-        data: dict = decode_message(recv, clear_prefix)
+        data: dict = decode_message(recv)
 
         if 'Success' in data and data.get('Success') != 'OK' and 'ErrMsg' in data:
             raise RuntimeError(data.get('ErrMsg'))
@@ -240,7 +241,7 @@ class QuoteAPI(TCore):
         return await self._send({'Request': 'GETHISDATA', 'SessionKey': self.session_key, 'Param': {
             'Symbol': quote_symbol, 'SubDataType': data_type, 'StartTime': start_time, 'EndTime': end_time,
             'QryIndex': qry_index
-        }}, True)
+        }})
 
     async def get_histories(self, quote_symbol: str, data_type: str, start_time: str, end_time: str):
         try:
