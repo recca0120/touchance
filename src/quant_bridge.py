@@ -28,6 +28,8 @@ def decode_message(raw_message: bytes):
         return {}
 
 
+# the Session is illegal
+
 class TCore(ABC):
     host = '127.0.0.1'
     port = '51237'
