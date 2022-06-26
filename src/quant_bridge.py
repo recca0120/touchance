@@ -53,6 +53,8 @@ class TCore(ABC):
         self._emitter = emitter if emitter is not None else AsyncIOEventEmitter(self.__event_loop)
 
         async def recv_message(message):
+            self._emitter.on('MESSAGE', message)
+
             return await self._receive(decode_message(message))
 
         self._emitter.on('RECV_MESSAGE', recv_message)
@@ -141,8 +143,6 @@ class TCore(ABC):
         self._emitter.on(event_name.upper(), func)
 
     async def _receive(self, result: dict):
-        self._emitter.emit('MESSAGE', result)
-
         data_type = result.get('DataType')
         self._emitter.emit(data_type, result)
 
