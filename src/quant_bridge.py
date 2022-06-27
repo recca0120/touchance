@@ -243,43 +243,32 @@ class QuoteAPI(TCore):
             'QryIndex': qry_index
         }})
 
-    async def get_histories(self, quote_symbol: str, data_type: str, start_time: str, end_time: str):
+    async def get_histories(self, quote_symbol: str, data_type: str, start_time: str, end_time: str, retry=30):
         try:
             await self.subscribe_history(quote_symbol, data_type, start_time, end_time)
         except RuntimeError as e:
             logging.error(str(e))
         await self.pong()
-        await asyncio.sleep(3)
-        async for history in self.__get_histories(quote_symbol, data_type, start_time, end_time):
+        async for history in self.__get_histories(quote_symbol, data_type, start_time, end_time, retry):
             yield history
 
-    async def _receive(self, result: dict):
-        await super()._receive(result)
-
-        if result.get('Status') == 'Ready':
-            histories = []
-            gen = self.__get_histories(result.get('Symbol'), result.get('DataType'), result.get('StartTime'),
-                                       result.get('EndTime'))
-            async for history in gen:
-                self._emitter.emit('HISTORY', history)
-                histories.append(history)
-            self._emitter.emit('HISTORIES', histories)
-
-    async def __get_histories(self, quote_symbol: str, data_type: str, start_time: str, end_time: str):
+    async def __get_histories(self, quote_symbol: str, data_type: str, start_time: str, end_time: str, retry=30):
         info = {'Symbol': quote_symbol}
         qry_index = ''
+        has_data = False
         while True:
             data = await self.get_history(quote_symbol, data_type, start_time, end_time, qry_index)
 
-            if data is None or 'HisData' not in data:
+            histories = data.get('HisData', []) if data is not None else []
+
+            if len(histories) == 0:
+                retry -= 1
+                if retry <= 0 or has_data is True:
+                    break
                 await asyncio.sleep(1)
                 continue
 
-            histories = data.get('HisData')
-
-            if len(histories) == 0:
-                break
-
+            has_data = True
             for history in histories:
                 yield {
                     'DataType': data_type,

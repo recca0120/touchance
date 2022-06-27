@@ -36,11 +36,11 @@ async def test_connect(mock_quote_api, context, locker, socket):
     assert quote_api.session_key == '777d79aadfaff06597919a9ce30f8b46'
     assert quote_api.sub_port == '50994'
 
-    assert locker.acquire.called
+    locker.acquire.assert_called()
     context.socket.call_args_list[0].assert_called_with(REQ)
     socket.connect.assert_called_once_with('tcp://127.0.0.1:51237')
     socket.send_json.assert_called_once_with(login_params)
-    assert locker.release.called
+    locker.release.assert_called()
 
 
 @pytest.mark.asyncio
@@ -51,9 +51,9 @@ async def test_disconnect(mock_quote_api, socket, locker):
     socket.recv.reset_mock()
     socket.recv.side_effect = [b'{"Reply":"LOGOUT","Success":"OK"}\x00']
 
-    assert locker.acquire.called
+    locker.acquire.assert_called()
     assert await quote_api.disconnect()
-    assert locker.release.called
+    locker.release.assert_called()
 
 
 @pytest.mark.asyncio
@@ -198,36 +198,11 @@ async def test_unsubscribe_history_1k(mock_quote_api, socket):
     end_time = '2021031700'
 
     assert await quote_api.unsubscribe_history(symbol, data_type, start_time, end_time)
+
     socket.send_json.assert_called_with({
         'Request': 'UNSUBQUOTE', 'SessionKey': '777d79aadfaff06597919a9ce30f8b46',
         'Param': {'Symbol': symbol, 'SubDataType': data_type, 'StartTime': start_time, 'EndTime': end_time},
     })
-
-
-@pytest.mark.asyncio
-async def test_get_history_1k(mocker, mock_quote_api, socket, emitter: AsyncIOEventEmitter):
-    mocker.patch.object(asyncio, 'sleep')
-    quote_api = mock_quote_api
-    await quote_api.connect()
-
-    socket.recv.reset_mock()
-    socket.recv.side_effect = open(
-        os.path.join(os.path.dirname(__file__), 'fixtures/history-1k.txt'), 'rb'
-    ).read().splitlines()
-
-    message = b'TC.F.TWF.FITX.HOT:{"DataType":"1K","StartTime":"2021030100","EndTime":"2021031700",' \
-              b'"Symbol":"TC.F.TWF.FITX.HOT","Status":"Ready"}\x00'
-
-    def assert_called(histories):
-        symbol = 'TC.F.TWF.FITX.HOT'
-        data_type = '1K'
-        start_time = '2021030100'
-        end_time = '2021031700'
-
-        assert_last_history(socket, histories[-1], symbol, data_type, start_time, end_time)
-
-    emitter.on('HISTORIES', lambda data: assert_called(data))
-    emitter.emit('RECV_MESSAGE', message)
 
 
 @pytest.mark.asyncio
@@ -262,12 +237,14 @@ async def test_pong(mock_quote_api, socket, emitter):
     socket.recv.reset_mock()
     socket.recv.side_effect = [b'{"Reply":"PONG","Success":"OK"}\x00']
 
-    def assert_called():
-        socket.send_json.assert_called_with({"Request": "PONG", "SessionKey": quote_api.session_key, "ID": 'TC'})
+    assert_called = MagicMock(side_effect=lambda ping: socket.send_json.assert_called_with(
+        {"Request": "PONG", "SessionKey": quote_api.session_key, "ID": 'TC'}))
 
-    emitter.on('PING', lambda ping: assert_called())
-
+    emitter.on('PING', assert_called)
     emitter.emit('RECV_MESSAGE', b'PING:{"DataType":"PING"}\x00')
+
+    await asyncio.sleep(0.1)
+    assert_called.assert_called()
 
 
 @pytest.mark.asyncio
@@ -280,48 +257,13 @@ async def test_broadcast_pong(mock_quote_api, socket, sub_socket, emitter):
     socket.recv.reset_mock()
     socket.recv.side_effect = [b'{"Reply":"PONG","Success":"OK"}\x00']
 
-    def assert_called():
-        socket.send_json.assert_called_with({"Request": "PONG", "SessionKey": quote_api.session_key, "ID": 'TC'})
+    assert_called = MagicMock(side_effect=lambda ping: socket.send_json.assert_called_with(
+        {"Request": "PONG", "SessionKey": quote_api.session_key, "ID": 'TC'}))
 
+    emitter.on('PING', assert_called)
     await quote_api.serve()
-    emitter.on('PING', lambda ping: assert_called())
 
-
-@pytest.mark.asyncio
-async def test_broadcast_get_history_1k(mocker, mock_quote_api, socket, sub_socket, emitter):
-    mocker.patch.object(asyncio, 'sleep')
-    quote_api = mock_quote_api
-    await quote_api.connect()
-
-    sub_socket.recv.side_effect = [
-        b'TC.F.TWF.FITX.HOT:{"DataType":"1K","StartTime":"2021030100","EndTime":"2021031700","Symbol":"TC.F.TWF.FITX.HOT","Status":"Ready"}\x00',
-        b'__pytest_stop__\x00'
-    ]
-
-    socket.recv.reset_mock()
-    socket.recv.side_effect = open(
-        os.path.join(os.path.dirname(__file__), 'fixtures/history-1k.txt'), 'rb'
-    ).read().splitlines()
-
-    def assert_called():
-        symbol = 'TC.F.TWF.FITX.HOT'
-        data_type = '1K'
-        start_time = '2021030100'
-        end_time = '2021031700'
-
-        send_json: MagicMock = socket.send_json
-        qry_index = send_json.call_args_list[len(send_json.call_args_list) - 1].args[0]['Param'].get('QryIndex')
-        send_json.assert_called_with({
-            'Request': 'GETHISDATA', 'SessionKey': '777d79aadfaff06597919a9ce30f8b46',
-            'Param': {
-                'Symbol': symbol, 'SubDataType': data_type, 'StartTime': start_time, 'EndTime': end_time,
-                'QryIndex': qry_index
-            }
-        })
-
-    emitter.on('HISTORIES', lambda histories: assert_called())
-
-    await quote_api.serve()
+    assert_called.assert_called_once()
 
 
 @pytest.fixture()
