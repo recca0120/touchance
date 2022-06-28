@@ -40,6 +40,7 @@ class TCore(ABC):
     __sub_socket: Optional[Socket] = None
     __serve_task: Optional[Task] = None
     __connection_info: Optional[dict] = None
+    __logger: logging.Logger = logging
 
     def __init__(self,
                  context: Optional[Context] = None,
@@ -157,6 +158,7 @@ class TCore(ABC):
         data: dict = decode_message(recv)
 
         if 'Success' in data and data.get('Success') != 'OK' and 'ErrMsg' in data:
+            self.__logger.error(data)
             raise RuntimeError(data.get('ErrMsg'))
 
         return data
