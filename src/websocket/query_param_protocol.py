@@ -3,7 +3,10 @@ import http
 from websockets.legacy.server import WebSocketServerProtocol
 
 from src.websocket.utils import get_query_param, urlsafe_base64_encode
-from src.websocket.websocket_handler import access_token
+
+
+def access_token():
+    return 'Tn1pa86JRUjd7XL27rBOjWJcx_Kv0IhFgkpKg3i0KNE'
 
 
 class QueryParamProtocol(WebSocketServerProtocol):

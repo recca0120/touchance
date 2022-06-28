@@ -1,13 +1,20 @@
+import asyncio
+import signal
+import sys
 from json import loads, JSONDecodeError, dumps
 
 import websockets
 from websockets.legacy.server import WebSocketServerProtocol
 
 from src.quant_bridge import QuoteAPI
+from src.websocket.query_param_protocol import QueryParamProtocol
 
+is_win = sys.platform.startswith("win")
 
-def access_token():
-    return ''
+if is_win and sys.version_info >= (3, 8):
+    from asyncio import WindowsSelectorEventLoopPolicy
+
+    asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
 
 
 class WebsocketHandler:
@@ -79,3 +86,24 @@ class WebsocketHandler:
                 param.get('Symbol'), param.get('SubDataType'), param.get('StartTime'), param.get('EndTime')
         ):
             await websocket.send(dumps(data))
+
+
+async def websocket_serve(loop=None, add_signal_handler=False):
+    loop = loop if loop is not None else asyncio.get_running_loop()
+    stop = loop.create_future()
+
+    if add_signal_handler and is_win is False:
+        loop.add_signal_handler(signal.SIGINT, stop.set_result, None)
+        loop.add_signal_handler(signal.SIGTERM, stop.set_result, None)
+
+    quote_api = QuoteAPI(event_loop=loop)
+    await quote_api.connect()
+    print(quote_api.sub_port)
+    quote_api.serve()
+
+    handler = WebsocketHandler(quote_api)
+    quote_api.on('PING', handler.broadcast)
+    quote_api.on('REALTIME', handler.broadcast)
+
+    async with websockets.serve(handler.handle, host='', port=8000, create_protocol=QueryParamProtocol):
+        await stop
