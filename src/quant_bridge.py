@@ -10,6 +10,8 @@ from pyee.asyncio import AsyncIOEventEmitter
 from zmq import REQ, SUB, SUBSCRIBE
 from zmq.asyncio import Context, Socket
 
+from src.exceptions import SessionIllegalException, SubscribeException
+
 
 def decode_message(raw_message: bytes):
     # with open('history-1k.txt', 'ab') as fp:
@@ -161,7 +163,15 @@ class TCore(ABC):
 
         if 'Success' in data and data.get('Success') != 'OK' and 'ErrMsg' in data:
             self.__logger.error(data)
-            raise RuntimeError(data.get('ErrMsg'))
+            request = params.get('Request')
+            print(request)
+            err_msg: str = data.get('ErrMsg')
+            if 'the Session is illegal' in err_msg:
+                raise SessionIllegalException(err_msg)
+            elif request == 'SUBQUOTE':
+                raise SubscribeException(err_msg)
+            else:
+                raise RuntimeError(err_msg)
 
         return data
 
@@ -250,7 +260,7 @@ class QuoteAPI(TCore):
     async def get_histories(self, quote_symbol: str, data_type: str, start_time: str, end_time: str, retry=30):
         try:
             await self.subscribe_history(quote_symbol, data_type, start_time, end_time)
-        except RuntimeError as e:
+        except SubscribeException as e:
             logging.error(str(e))
         await self.pong()
         async for history in self.__get_histories(quote_symbol, data_type, start_time, end_time, retry):

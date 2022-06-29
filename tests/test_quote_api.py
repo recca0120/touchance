@@ -6,6 +6,7 @@ import pytest
 from pyee.asyncio import AsyncIOEventEmitter
 from zmq import REQ
 
+from src.exceptions import SessionIllegalException, SubscribeException
 from src.quant_bridge import QuoteAPI
 
 
@@ -264,6 +265,38 @@ async def test_broadcast_pong(mock_quote_api, socket, sub_socket, emitter):
     await quote_api.serve()
 
     assert_called.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_session_illegal_exception(mock_quote_api, socket):
+    quote_api = mock_quote_api
+    await quote_api.connect()
+
+    socket.recv.reset_mock()
+    socket.recv.side_effect = [
+        b'{"Reply": "SUBQUOTE", "Success": "Fail", "SessionKey": "777d79aadfaff06597919a9ce30f8b46", "ErrMsg": "the Session is illegal"}\x00'
+    ]
+
+    symbol = 'TC.F.TWF.FITX.HOT'
+
+    with pytest.raises(SessionIllegalException):
+        assert await quote_api.subscribe_quote(symbol)
+
+
+@pytest.mark.asyncio
+async def test_subscribe_exception(mock_quote_api, socket):
+    quote_api = mock_quote_api
+    await quote_api.connect()
+
+    socket.recv.reset_mock()
+    socket.recv.side_effect = [
+        b'{"Reply": "SUBQUOTE", "Success": "Fail", "SessionKey": "777d79aadfaff06597919a9ce30f8b46", "ErrMsg": "Already sub"}\x00'
+    ]
+
+    symbol = 'TC.F.TWF.FITX.HOT'
+
+    with pytest.raises(SubscribeException):
+        assert await quote_api.subscribe_quote(symbol)
 
 
 @pytest.fixture()
