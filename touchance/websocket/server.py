@@ -1,33 +1,15 @@
 import asyncio
-import http
-import signal
+import logging
 import sys
+from asyncio import Task, AbstractEventLoop
 from json import loads, JSONDecodeError, dumps
-from typing import Set
+from typing import Set, Optional, Union
 
 import websockets
 from websockets.legacy.server import WebSocketServerProtocol
 
-from touchance.quant_bridge import QuoteAPI
-from touchance.websocket.utils import get_query_param, urlsafe_base64_encode
-
-is_win = sys.platform.startswith("win")
-
-if is_win and sys.version_info >= (3, 8):
-    from asyncio import WindowsSelectorEventLoopPolicy
-
-    asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
-
-
-def access_token():
-    return ''
-
-
-class QueryParamProtocol(WebSocketServerProtocol):
-    async def process_request(self, path, headers):
-        token = get_query_param(path, 'token')
-        if token is None or urlsafe_base64_encode(token) != access_token():
-            return http.HTTPStatus.UNAUTHORIZED, [], b"Invalid token\n"
+from touchance.quote_api import QuoteAPI
+from touchance.websocket.query_param_protocol import QueryParamProtocol
 
 
 class Server:
@@ -35,9 +17,10 @@ class Server:
     __websocket: WebSocketServerProtocol
     __quote_api: QuoteAPI
 
-    def __init__(self, quote_api: QuoteAPI):
+    def __init__(self, quote_api: QuoteAPI, logger: Optional[logging.Logger] = None):
         self.connections = set()
         self.__quote_api = quote_api
+        self.__logger = logger if logger is not None else logging
 
     def add(self, websocket: WebSocketServerProtocol):
         self.connections.add(websocket)
@@ -64,7 +47,7 @@ class Server:
             if func is not None:
                 await getattr(self, f'_{func}')(websocket, request)
         except JSONDecodeError as e:
-            print(str(e))
+            self.__logger.error(e)
 
     async def handle(self, websocket: WebSocketServerProtocol):
         self.add(websocket)
@@ -104,22 +87,41 @@ class Server:
             await websocket.send(dumps(data))
 
 
-async def serve(host='', port=8001, loop=None):
-    loop = loop if loop is not None else asyncio.get_running_loop()
+async def start_server(loop: AbstractEventLoop, logger: logging.Logger, port: Union[str, int] = 8001):
     stop = loop.create_future()
 
-    if is_win is False:
-        loop.add_signal_handler(signal.SIGINT, stop.set_result, None)
-        loop.add_signal_handler(signal.SIGTERM, stop.set_result, None)
-
-    quote_api = QuoteAPI(event_loop=loop)
+    quote_api = QuoteAPI(event_loop=loop, logger=logger)
     await quote_api.connect()
-    print(quote_api.sub_port)
     quote_api.serve()
 
-    handler = Server(quote_api)
+    handler = Server(quote_api, logger)
     quote_api.on('PING', handler.broadcast)
     quote_api.on('REALTIME', handler.broadcast)
 
-    async with websockets.serve(handler.handle, host=host, port=port, create_protocol=QueryParamProtocol):
-        await stop
+    try:
+        async with websockets.serve(
+                handler.handle,
+                host='',
+                port=port,
+                extra_headers={'type': 'server'},
+                create_protocol=QueryParamProtocol
+        ):
+            await stop
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        sys.exit(0)
+
+
+def __start_wss_server(logger: Optional[logging.Logger] = None, port: Union[str, int] = 8001):
+    loop = asyncio.get_event_loop()
+    logger = logger if logger is not None else logging
+
+    task: Optional[Task] = None
+    try:
+        task = asyncio.ensure_future(start_server(loop=loop, logger=logger, port=port))
+        loop.run_until_complete(task)
+    except KeyboardInterrupt:
+        task.cancel()
+        loop.run_forever()
+        task.exception()
+    finally:
+        loop.close()

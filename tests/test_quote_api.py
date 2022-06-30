@@ -7,7 +7,7 @@ from pyee.asyncio import AsyncIOEventEmitter
 from zmq import REQ
 
 from touchance.exceptions import SessionIllegalException, SubscribeException
-from touchance.quant_bridge import QuoteAPI
+from touchance.quote_api import QuoteAPI
 
 
 def assert_last_history(socket, history, quote_symbol, data_type, start_time, end_time):

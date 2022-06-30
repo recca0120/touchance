@@ -13,29 +13,11 @@ from zmq.asyncio import Context, Socket
 from touchance.exceptions import SessionIllegalException, SubscribeException
 
 
-def decode_message(raw_message: bytes):
-    # with open('history-1k.txt', 'ab') as fp:
-    #     fp.write(raw_message)
-    #     fp.write("\n".encode())
-    message = raw_message.decode('utf-8').rstrip('\x00')
-    matched = re.match(r'(^[\w\d.]+:){', message)
-    if matched is not None:
-        index = len(matched.group(1))
-        message = message[index:]
-
-    try:
-        return loads(message)
-    except JSONDecodeError:
-        logging.error(raw_message)
-        return {}
-
-
-# the Session is illegal
-
 class TCore(ABC):
     host = '127.0.0.1'
     port = '51237'
     _emitter: AsyncIOEventEmitter
+    _logger: logging.Logger
     __app_id = 'ZMQ'
     __secret = '8076c9867a372d2a9a814ae710c256e2'
     __context: Context
@@ -44,23 +26,24 @@ class TCore(ABC):
     __sub_socket: Optional[Socket] = None
     __serve_task: Optional[Task] = None
     __connection_info: Optional[dict] = None
-    __logger: logging.Logger = logging
 
     def __init__(self,
                  context: Optional[Context] = None,
                  locker: Optional[Lock] = None,
                  emitter: Optional[AsyncIOEventEmitter] = None,
-                 event_loop: Optional[AbstractEventLoop] = None):
+                 event_loop: Optional[AbstractEventLoop] = None,
+                 logger: Optional[logging.Logger] = None):
         self.__context = context if context is not None else Context()
         self.__locker = locker if locker is not None else Lock()
         self.__event_loop = event_loop if event_loop is not None else asyncio.get_event_loop()
+        self._logger = logger if logger is not None else logging.getLogger()
 
         self._emitter = emitter if emitter is not None else AsyncIOEventEmitter(self.__event_loop)
 
         async def recv_message(message):
             self._emitter.on('MESSAGE', message)
 
-            return await self._receive(decode_message(message))
+            return await self._receive(self.__decode_message(message))
 
         self._emitter.on('RECV_MESSAGE', recv_message)
 
@@ -82,6 +65,7 @@ class TCore(ABC):
             'Request': 'LOGIN',
             'Param': {'SystemName': self.__app_id, 'ServiceKey': self.__secret}
         })
+        self._logger.info('QuoteAPI SubPort: %s', self.sub_port)
 
         return self.is_connected
 
@@ -159,12 +143,11 @@ class TCore(ABC):
         self.__socket.send_json(params)
         recv = await self.__socket.recv()
         self.__unlock()
-        data: dict = decode_message(recv)
+        data: dict = self.__decode_message(recv)
 
         if 'Success' in data and data.get('Success') != 'OK' and 'ErrMsg' in data:
-            self.__logger.error(data)
+            self._logger.error(data)
             request = params.get('Request')
-            print(request)
             err_msg: str = data.get('ErrMsg')
             if 'the Session is illegal' in err_msg:
                 raise SessionIllegalException(err_msg)
@@ -196,102 +179,21 @@ class TCore(ABC):
     def __get_info(self, key: str):
         return self.__connection_info.get(key) if self.__connection_info is not None else None
 
+    def __decode_message(self, raw_message: bytes):
+        # with open('history-1k.txt', 'ab') as fp:
+        #     fp.write(raw_message)
+        #     fp.write("\n".encode())
+        message = raw_message.decode('utf-8').rstrip('\x00')
+        matched = re.match(r'(^[\w\d.]+:){', message)
+        if matched is not None:
+            index = len(matched.group(1))
+            message = message[index:]
 
-class QuoteAPI(TCore):
-    port = '51237'
-
-    async def subscribe_quote(self, quote_symbol: str):
-        return await self.subscribe('SUBQUOTE', {'Symbol': quote_symbol, 'SubDataType': 'REALTIME'})
-
-    async def unsubscribe_quote(self, quote_symbol: str):
-        return await self.subscribe('UNSUBQUOTE', {'Symbol': quote_symbol, 'SubDataType': 'REALTIME'})
-
-    async def subscribe_greeks(self, quote_symbol: str, greeks_type='REAL'):
-        return await self.subscribe('SUBQUOTE', {
-            'Symbol': quote_symbol, 'SubDataType': 'GREEKS', 'GreeksType': greeks_type
-        })
-
-    async def unsubscribe_greeks(self, quote_symbol: str, greeks_type='REAL'):
-        return await self.subscribe('UNSUBQUOTE', {
-            'Symbol': quote_symbol, 'SubDataType': 'GREEKS', 'GreeksType': greeks_type
-        })
-
-    async def subscribe_history(self, quote_symbol: str, data_type: str, start_time: str, end_time: str):
-        """訂閱歷史資料.
-
-        Parameters
-        ----------
-        quote_symbol: str
-        data_type: str
-            TICKS, 1K, DK
-        start_time: str
-        end_time: str
-        """
-        return await self.subscribe('SUBQUOTE', {
-            'Symbol': quote_symbol, 'SubDataType': data_type, 'StartTime': start_time, 'EndTime': end_time
-        })
-
-    async def unsubscribe_history(self, quote_symbol: str, data_type: str, start_time: str, end_time: str):
-        """取溑訂閱歷史資料.
-
-        Parameters
-        ----------
-        quote_symbol: str
-        data_type: str
-            TICKS, 1K, DK
-        start_time: str
-        end_time: str
-        """
-        return await self.subscribe('UNSUBQUOTE', {
-            'Symbol': quote_symbol, 'SubDataType': data_type, 'StartTime': start_time, 'EndTime': end_time
-        })
-
-    async def subscribe(self, request: str, param: dict):
-        info = await self._send({'Request': request, 'SessionKey': self.session_key, 'Param': param})
-
-        return info.get('Reply') == request and info.get('Success') == 'OK'
-
-    async def get_history(self, quote_symbol: str, data_type: str, start_time: str, end_time: str, qry_index):
-        return await self._send({'Request': 'GETHISDATA', 'SessionKey': self.session_key, 'Param': {
-            'Symbol': quote_symbol, 'SubDataType': data_type, 'StartTime': start_time, 'EndTime': end_time,
-            'QryIndex': qry_index
-        }})
-
-    async def get_histories(self, quote_symbol: str, data_type: str, start_time: str, end_time: str, retry=30):
         try:
-            await self.subscribe_history(quote_symbol, data_type, start_time, end_time)
-        except SubscribeException as e:
-            logging.error(str(e))
-        await self.pong()
-        async for history in self.__get_histories(quote_symbol, data_type, start_time, end_time, retry):
-            yield history
-
-    async def __get_histories(self, quote_symbol: str, data_type: str, start_time: str, end_time: str, retry=30):
-        info = {'Symbol': quote_symbol}
-        qry_index = ''
-        has_data = False
-        while True:
-            data = await self.get_history(quote_symbol, data_type, start_time, end_time, qry_index)
-
-            histories = data.get('HisData', []) if data is not None else []
-
-            if len(histories) == 0:
-                retry -= 1
-                if retry <= 0 or has_data is True:
-                    break
-                await asyncio.sleep(1)
-                continue
-
-            has_data = True
-            for history in histories:
-                yield {
-                    'DataType': data_type,
-                    'StartTime': start_time,
-                    'EndTime': end_time,
-                    'HisData': {**info, **history}
-                }
-
-            qry_index = histories[-1].get('QryIndex')
+            return loads(message)
+        except JSONDecodeError:
+            self._logger.error(raw_message)
+            return {}
 
 
 class TradeAPI(TCore):
