@@ -9,7 +9,7 @@ import websockets
 from websockets.exceptions import ConnectionClosedError
 from websockets.legacy.server import WebSocketServerProtocol
 
-from src.websocket.utils import get_query_param, urlsafe_base64_encode
+from touchance.websocket.utils import get_query_param, urlsafe_base64_encode
 
 
 def access_token():

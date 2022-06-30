@@ -10,7 +10,7 @@ from pyee.asyncio import AsyncIOEventEmitter
 from zmq import REQ, SUB, SUBSCRIBE
 from zmq.asyncio import Context, Socket
 
-from src.exceptions import SessionIllegalException, SubscribeException
+from touchance.exceptions import SessionIllegalException, SubscribeException
 
 
 def decode_message(raw_message: bytes):

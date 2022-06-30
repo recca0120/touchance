@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, AsyncMock
 import pytest
 from websockets.legacy.server import WebSocketServerProtocol
 
-from src.quant_bridge import QuoteAPI
-from src.websocket.server import Server
+from touchance.quant_bridge import QuoteAPI
+from touchance.websocket.server import Server
 
 
 class AsyncIterator:

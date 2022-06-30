@@ -8,8 +8,8 @@ from typing import Set
 import websockets
 from websockets.legacy.server import WebSocketServerProtocol
 
-from src.quant_bridge import QuoteAPI
-from src.websocket.utils import get_query_param, urlsafe_base64_encode
+from touchance.quant_bridge import QuoteAPI
+from touchance.websocket.utils import get_query_param, urlsafe_base64_encode
 
 is_win = sys.platform.startswith("win")
 

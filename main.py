@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 
-from src.quant_bridge import QuoteAPI
+from touchance.quant_bridge import QuoteAPI
 
 
 def OnRealTimeQuote(symbol):
