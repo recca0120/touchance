@@ -1,13 +1,15 @@
 import asyncio
+import http
 import signal
 import sys
 from json import loads, JSONDecodeError, dumps
+from typing import Set
 
 import websockets
 from websockets.legacy.server import WebSocketServerProtocol
 
 from src.quant_bridge import QuoteAPI
-from src.websocket.query_param_protocol import QueryParamProtocol
+from src.websocket.utils import get_query_param, urlsafe_base64_encode
 
 is_win = sys.platform.startswith("win")
 
@@ -17,8 +19,19 @@ if is_win and sys.version_info >= (3, 8):
     asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
 
 
-class WebsocketHandler:
-    connections: set
+def access_token():
+    return ''
+
+
+class QueryParamProtocol(WebSocketServerProtocol):
+    async def process_request(self, path, headers):
+        token = get_query_param(path, 'token')
+        if token is None or urlsafe_base64_encode(token) != access_token():
+            return http.HTTPStatus.UNAUTHORIZED, [], b"Invalid token\n"
+
+
+class Server:
+    connections: Set[WebSocketServerProtocol]
     __websocket: WebSocketServerProtocol
     __quote_api: QuoteAPI
 
@@ -28,6 +41,9 @@ class WebsocketHandler:
 
     def add(self, websocket: WebSocketServerProtocol):
         self.connections.add(websocket)
+        # self.greeting()
+
+    def greeting(self):
         self.broadcast({'Reply': 'CONNECTIONS', 'count': len(self.connections)})
 
     def remove(self, websocket):
@@ -88,11 +104,11 @@ class WebsocketHandler:
             await websocket.send(dumps(data))
 
 
-async def websocket_serve(loop=None, add_signal_handler=False):
+async def serve(host='', port=8001, loop=None):
     loop = loop if loop is not None else asyncio.get_running_loop()
     stop = loop.create_future()
 
-    if add_signal_handler and is_win is False:
+    if is_win is False:
         loop.add_signal_handler(signal.SIGINT, stop.set_result, None)
         loop.add_signal_handler(signal.SIGTERM, stop.set_result, None)
 
@@ -101,9 +117,9 @@ async def websocket_serve(loop=None, add_signal_handler=False):
     print(quote_api.sub_port)
     quote_api.serve()
 
-    handler = WebsocketHandler(quote_api)
+    handler = Server(quote_api)
     quote_api.on('PING', handler.broadcast)
     quote_api.on('REALTIME', handler.broadcast)
 
-    async with websockets.serve(handler.handle, host='', port=8000, create_protocol=QueryParamProtocol):
+    async with websockets.serve(handler.handle, host=host, port=port, create_protocol=QueryParamProtocol):
         await stop

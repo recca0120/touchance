@@ -6,7 +6,7 @@ import pytest
 from websockets.legacy.server import WebSocketServerProtocol
 
 from src.quant_bridge import QuoteAPI
-from src.websocket.websocket_handler import WebsocketHandler
+from src.websocket.server import Server
 
 
 class AsyncIterator:
@@ -24,7 +24,7 @@ class AsyncIterator:
 
 
 @pytest.mark.asyncio
-async def test_execute_queryallinstrument(handler: WebsocketHandler, websocket: MagicMock, quote_api: MagicMock):
+async def test_execute_queryallinstrument(handler: Server, websocket: MagicMock, quote_api: MagicMock):
     message = '{"Request": "QUERYALLINSTRUMENT", "Type": "Fut"}'
 
     quote_api.query_all_instrument.return_value = get_fixture('query_all_instrument.txt')
@@ -38,7 +38,7 @@ async def test_execute_queryallinstrument(handler: WebsocketHandler, websocket: 
 
 
 @pytest.mark.asyncio
-async def test_query_instrument_info(handler: WebsocketHandler, websocket: MagicMock, quote_api: MagicMock):
+async def test_query_instrument_info(handler: Server, websocket: MagicMock, quote_api: MagicMock):
     message = '{"Request": "QUERYINSTRUMENTINFO", "Symbol": "TC.F.TWF.FITX.HOT"}'
 
     quote_api.query_instrument_info.return_value = get_fixture('query_instrument_info.txt')
@@ -52,7 +52,7 @@ async def test_query_instrument_info(handler: WebsocketHandler, websocket: Magic
 
 
 @pytest.mark.asyncio
-async def test_subquote_realtime(handler: WebsocketHandler, websocket: MagicMock, quote_api: MagicMock):
+async def test_subquote_realtime(handler: Server, websocket: MagicMock, quote_api: MagicMock):
     message = '{"Request": "SUBQUOTE", "Param": {"Symbol": "TC.F.TWF.FITX.HOT", "SubDataType": "REALTIME"}}'
     # message = '{"Request": "SUBQUOTE", "Param": {"Symbol": "TC.F.CBOT.YM.202209", "SubDataType": "REALTIME"}}'
 
@@ -67,7 +67,7 @@ async def test_subquote_realtime(handler: WebsocketHandler, websocket: MagicMock
 
 
 @pytest.mark.asyncio
-async def test_unsubquote_realtime(handler: WebsocketHandler, websocket: MagicMock, quote_api: MagicMock):
+async def test_unsubquote_realtime(handler: Server, websocket: MagicMock, quote_api: MagicMock):
     message = '{"Request": "UNSUBQUOTE", "Param": {"Symbol": "TC.F.TWF.FITX.HOT", "SubDataType": "REALTIME"}}'
     # message = '{"Request": "UNSUBQUOTE", "Param": {"Symbol": "TC.F.CBOT.YM.202209", "SubDataType": "REALTIME"}}'
 
@@ -82,7 +82,7 @@ async def test_unsubquote_realtime(handler: WebsocketHandler, websocket: MagicMo
 
 
 @pytest.mark.asyncio
-async def test_unsubquote_realtime(handler: WebsocketHandler, websocket: MagicMock, quote_api: MagicMock):
+async def test_unsubquote_realtime(handler: Server, websocket: MagicMock, quote_api: MagicMock):
     message = '{"Request": "GETHISDATA", "Param": {"Symbol": "TC.F.TWF.FITX.HOT", "SubDataType": "1K", "StartTime": "2021030100", "EndTime": "2021031700"}}'
     # message = '{"Request": "GETHISDATA", "Param": {"Symbol": "TC.F.TWF.FITX.HOT", "SubDataType": "TICKS", "StartTime": "2022062700", "EndTime": "2022062723"}}'
 
@@ -120,5 +120,5 @@ def quote_api():
 
 @pytest.fixture
 def handler(quote_api: QuoteAPI):
-    return WebsocketHandler(quote_api)
+    return Server(quote_api)
     pass

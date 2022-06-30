@@ -18,7 +18,7 @@ def urlsafe_base64_decode(hashed: str):
     return padded
 
 
-def sha256(plain_text: str):
+def make_hash(plain_text: str):
     hashed = hashlib.sha256(plain_text.encode('utf-8')).digest()
 
     return urlsafe_base64_encode(base64.encodebytes(hashed).decode('utf-8').strip())
