@@ -10,7 +10,7 @@ from pyee.asyncio import AsyncIOEventEmitter
 from zmq import REQ, SUB, SUBSCRIBE
 from zmq.asyncio import Context, Socket
 
-from touchance.exceptions import SessionIllegalException, SubscribeException
+from touchance.exceptions import SessionIllegalException, SubscribeException, NewOrderException
 
 
 class TCore(ABC):
@@ -145,15 +145,22 @@ class TCore(ABC):
         self.__unlock()
         data: dict = self.__decode_message(recv)
 
-        if 'Success' in data and data.get('Success') != 'OK' and 'ErrMsg' in data:
+        if 'Success' in data and data.get('Success') != 'OK':
             self._logger.error(data)
             request = params.get('Request')
-            err_msg: str = data.get('ErrMsg')
-            if 'the Session is illegal' in err_msg:
-                raise SessionIllegalException(err_msg)
-            elif request == 'SUBQUOTE':
-                raise SubscribeException(err_msg)
-            else:
+
+            if request == 'NEWORDER' and 'ErrCode' in data:
+                raise NewOrderException(data.get('ErrCode'))
+
+            if 'ErrMsg' in data:
+                err_msg = data.get('ErrMsg')
+
+                if 'the Session is illegal' in err_msg:
+                    raise SessionIllegalException(err_msg)
+
+                if request in 'SUBQUOTE':
+                    raise SubscribeException(err_msg)
+
                 raise RuntimeError(err_msg)
 
         return data
@@ -194,7 +201,3 @@ class TCore(ABC):
         except JSONDecodeError:
             self._logger.error(raw_message)
             return {}
-
-
-class TradeAPI(TCore):
-    port = '51207'
